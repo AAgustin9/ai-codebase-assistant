@@ -1,8 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --primary: #6f5e53;
+  --primary-light: #8a7968;
+  --primary-dark: #5d4e45;
+  --secondary: #ab947e;
+  --secondary-light: #c3a995;
+  --secondary-dark: #8a7968;
+  --accent: #c3a995;
+  --background: #f8f5f2;
+  --foreground: #3c3530;
+  --card-bg: #ffffff;
+  --card-border: #e5dfd9;
+  --chat-user-bg: #8a7968;
+  --chat-assistant-bg: #f8f5f2;
+  --chat-assistant-border: #e5dfd9;
 }
 
 @theme inline {
@@ -14,13 +26,65 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --primary: #8a7968;
+    --primary-light: #ab947e;
+    --primary-dark: #6f5e53;
+    --secondary: #ab947e;
+    --secondary-light: #c3a995;
+    --secondary-dark: #8a7968;
+    --accent: #c3a995;
+    --background: rgb(58, 52, 48);
+    --foreground: #f0ebe5;
+    --card-bg: #3c3530;
+    --card-border: #5d4e45;
+    --chat-user-bg: #8a7968;
+    --chat-assistant-bg: #3c3530;
+    --chat-assistant-border: #5d4e45;
   }
 }
 
 body {
-  background: var(--background);
+  background: rgb(58, 52, 48);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans, Arial, Helvetica, sans-serif);
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(111, 94, 83, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(171, 148, 126, 0.3);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(171, 148, 126, 0.5);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Message bubble styles */
+.message-bubble {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.message-bubble:hover {
+  transform: translateY(-1px);
 }
