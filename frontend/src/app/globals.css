@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --primary: #6f5e53;
-  --primary-light: #8a7968;
-  --primary-dark: #5d4e45;
-  --secondary: #ab947e;
-  --secondary-light: #c3a995;
-  --secondary-dark: #8a7968;
-  --accent: #c3a995;
-  --background: #f8f5f2;
-  --foreground: #3c3530;
-  --card-bg: #ffffff;
-  --card-border: #e5dfd9;
-  --chat-user-bg: #8a7968;
-  --chat-assistant-bg: #f8f5f2;
-  --chat-assistant-border: #e5dfd9;
+  --primary: #3b82f6;         /* Blue-500 */
+  --primary-light: #60a5fa;   /* Blue-400 */
+  --primary-dark: #2563eb;    /* Blue-600 */
+  --secondary: #6b7280;       /* Gray-500 */
+  --secondary-light: #9ca3af; /* Gray-400 */
+  --secondary-dark: #4b5563;  /* Gray-600 */
+  --accent: #10b981;          /* Emerald-500 */
+  --background: #ffffff;      /* White */
+  --foreground: #1f2937;      /* Gray-800 */
+  --card-bg: #f9fafb;         /* Gray-50 */
+  --card-border: #e5e7eb;     /* Gray-200 */
+  --chat-user-bg: #3b82f6;    /* Blue-500 */
+  --chat-assistant-bg: #f9fafb; /* Gray-50 */
+  --chat-assistant-border: #e5e7eb; /* Gray-200 */
 }
 
 @theme inline {
@@ -26,25 +26,25 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --primary: #8a7968;
-    --primary-light: #ab947e;
-    --primary-dark: #6f5e53;
-    --secondary: #ab947e;
-    --secondary-light: #c3a995;
-    --secondary-dark: #8a7968;
-    --accent: #c3a995;
-    --background: rgb(58, 52, 48);
-    --foreground: #f0ebe5;
-    --card-bg: #3c3530;
-    --card-border: #5d4e45;
-    --chat-user-bg: #8a7968;
-    --chat-assistant-bg: #3c3530;
-    --chat-assistant-border: #5d4e45;
+    --primary: #3b82f6;         /* Blue-500 */
+    --primary-light: #60a5fa;   /* Blue-400 */
+    --primary-dark: #2563eb;    /* Blue-600 */
+    --secondary: #9ca3af;       /* Gray-400 */
+    --secondary-light: #d1d5db; /* Gray-300 */
+    --secondary-dark: #6b7280;  /* Gray-500 */
+    --accent: #10b981;          /* Emerald-500 */
+    --background: #111827;      /* Gray-900 */
+    --foreground: #f9fafb;      /* Gray-50 */
+    --card-bg: #1f2937;         /* Gray-800 */
+    --card-border: #374151;     /* Gray-700 */
+    --chat-user-bg: #3b82f6;    /* Blue-500 */
+    --chat-assistant-bg: #1f2937; /* Gray-800 */
+    --chat-assistant-border: #374151; /* Gray-700 */
   }
 }
 
 body {
-  background: rgb(58, 52, 48);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans, Arial, Helvetica, sans-serif);
   min-height: 100vh;
@@ -87,4 +87,16 @@ body {
 
 .message-bubble:hover {
   transform: translateY(-1px);
+}
+
+/* Better word wrapping for long content */
+.break-words {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* Prevent overflow in message containers */
+.overflow-hidden {
+  overflow: hidden;
 }

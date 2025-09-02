@@ -2,6 +2,20 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Environment Setup
+
+Create a `.env.local` file in the root directory with the following content:
+
+```
+# API Gateway URL - Update this to match your API Gateway port
+NEXT_PUBLIC_API_GATEWAY_URL=http://localhost:3003
+
+# Default API key for development
+NEXT_PUBLIC_API_KEY=dev_api_key_for_testing
+```
+
+### Running the Development Server
+
 First, run the development server:
 
 ```bash
