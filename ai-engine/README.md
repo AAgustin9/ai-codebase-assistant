@@ -1,98 +1,129 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# AI Engine Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+This internal service is the brain of the operation, handling all AI logic and third-party integrations.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Features
 
-## Description
+- Receives requests from the Ruby Gateway
+- Uses the Vercel AI SDK to manage interactions with various LLM providers
+- Implements GitHub interaction tools
+- Integrates with the GitHub API using Octokit.js
+- Supports multiple AI providers (OpenAI, Anthropic, Cohere, Mistral)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Architecture
 
-## Project setup
+The service follows SOLID principles:
 
+- **Single Responsibility**: Each class has a single responsibility
+- **Open/Closed**: The system is open for extension but closed for modification
+- **Liskov Substitution**: Interfaces are designed for proper substitution
+- **Interface Segregation**: Specific interfaces for different functionalities
+- **Dependency Inversion**: Dependencies are injected and rely on abstractions
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18+ recommended)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Copy the environment example file:
+   ```bash
+   cp env.example .env
+   ```
+4. Update the `.env` file with your API keys and configuration
+
+### Running the Service
+
+Development mode:
 ```bash
-$ npm install
+npm run start:dev
 ```
 
-## Compile and run the project
-
+Production mode:
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm run build
+npm run start:prod
 ```
 
-## Run tests
+## API Endpoints
 
-```bash
-# unit tests
-$ npm run test
+### Generate Text
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```
+POST /ai/generate
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+Request body:
+```json
+{
+  "prompt": "Your prompt text here",
+  "options": {
+    "model": "gpt-4o"
+  }
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Generate Text with GitHub Tools
 
-## Resources
+```
+POST /ai/generate-with-tools
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+Request body:
+```json
+{
+  "prompt": "Your prompt text here",
+  "options": {
+    "model": "gpt-4o"
+  }
+}
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Environment Variables
 
-## Support
+- `DEFAULT_AI_MODEL`: Default LLM model to use (e.g., "gpt-4o", "claude-3-opus", "command-r", "mistral-large")
+- `GITHUB_TOKEN`: GitHub personal access token
+- `PORT`: Server port (default: 3000)
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### AI Provider API Keys (set the ones you need)
 
-## Stay in touch
+- `OPENAI_API_KEY`: Your OpenAI API key
+- `ANTHROPIC_API_KEY`: Your Anthropic API key
+- `COHERE_API_KEY`: Your Cohere API key
+- `MISTRAL_API_KEY`: Your Mistral API key
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Testing
 
-## License
+You can run the service in mock mode by setting:
+```
+AI_USE_MOCK=true
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+This will use mock providers instead of making actual API calls, which is useful for testing.
+
+## Project Structure
+
+```
+ai-engine/
+├── src/
+│   ├── config/           # Configuration files
+│   ├── controllers/      # API controllers
+│   ├── interfaces/       # Interfaces and DTOs
+│   ├── modules/          # NestJS modules
+│   ├── services/         # Service implementations
+│   ├── utils/            # Utility functions
+│   ├── app.controller.ts # Main app controller
+│   ├── app.module.ts     # Main app module
+│   ├── app.service.ts    # Main app service
+│   └── main.ts           # Application entry point
+├── test/                 # Test files
+└── README.md             # This file
+```
