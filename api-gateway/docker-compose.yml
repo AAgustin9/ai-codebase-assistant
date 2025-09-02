@@ -1,0 +1,31 @@
+
+services:
+  db:
+    image: postgres:14
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: app_development
+    ports:
+      - "5432:5432"
+
+  api:
+    build: .
+    ports:
+      - "3003:3000"
+    depends_on:
+      - db
+    environment:
+      - RAILS_ENV=development
+      - DATABASE_URL=${DATABASE_URL}
+      - RAILS_MASTER_KEY=${RAILS_MASTER_KEY}
+      - AI_ENGINE_URL=${AI_ENGINE_URL}
+    volumes:
+      - .:/rails
+    command: ["./bin/rails", "server", "-b", "0.0.0.0"]
+
+volumes:
+  postgres_data:
+
