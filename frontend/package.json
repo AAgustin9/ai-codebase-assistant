@@ -9,11 +9,15 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^1.0.15",
+    "@ai-sdk/rsc": "^1.0.30",
     "@types/react-syntax-highlighter": "^15.5.13",
     "ai": "^5.0.24",
     "chart.js": "^4.5.0",
+    "class-validator": "^0.14.2",
     "ia": "^0.0.1-beta",
     "next": "15.4.6",
+    "openai": "^4.8.0",
     "react": "19.1.0",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "19.1.0",

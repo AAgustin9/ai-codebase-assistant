@@ -172,7 +172,7 @@ const renderToolCallResult = (message: Message) => {
 // Main Chat component
 export default function Chat() {
   const [modelSelection, setModelSelection] = useState<string>('gpt-4o');
-  const [apiKey, setApiKey] = useState<string>('');
+  //const [apiKey, setApiKey] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -209,7 +209,7 @@ export default function Chat() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
+          //'X-API-Key': apiKey,
         },
         body: JSON.stringify({
           prompt: input,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Chat from "../components/Chat";
+import GenerativeChat from "./GenerativeChat";
 import AnalyticsDashboard from "../components/AnalyticsDashboard";
 
 export default function Home() {
@@ -45,7 +45,7 @@ export default function Home() {
       <main className="flex-1 flex overflow-hidden">
         {activeTab === 'chat' ? (
           <div className="flex-1 p-2 sm:p-4 overflow-hidden">
-            <Chat />
+            <GenerativeChat />
           </div>
         ) : (
           <div className="flex-1 p-2 sm:p-4 overflow-y-auto custom-scrollbar">

@@ -1,244 +1,224 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Octokit } from '@octokit/rest';
-import { IGitHubTools } from '../interfaces/github-tools.interface';
+import { Octokit } from 'octokit';
+import { retry } from '@octokit/plugin-retry';
+import { throttling } from '@octokit/plugin-throttling';
+
+const MyOctokit = Octokit.plugin(retry, throttling);
+
+type UpsertParams = {
+  owner: string;
+  repo: string;
+  path: string;
+  content: string | Buffer;    // contenido en UTF-8 o binario
+  message: string;             // commit message
+  branch?: string;             // por defecto 'main'
+  author?: { name: string; email: string };
+  committer?: { name: string; email: string };
+  expectedSha?: string;        // sha esperado para update (optimistic concurrency)
+};
+
+type DeleteParams = {
+  owner: string;
+  repo: string;
+  path: string;
+  message?: string;
+  branch?: string;
+};
 
 @Injectable()
-export class GitHubService implements IGitHubTools {
-  private readonly octokit: Octokit;
+export class GitHubService {
   private readonly logger = new Logger(GitHubService.name);
+  private readonly octokit: InstanceType<typeof MyOctokit>;
 
-  constructor(private configService: ConfigService) {
-    const token = this.configService.get<string>('github.token') || process.env.GITHUB_TOKEN;
-    this.logger.log(`[GITHUB-SERVICE] Initializing with token: ${token ? 'Present' : 'Missing'}`);
-    
-    // Initialize Octokit with auth token from config or environment
-    this.octokit = new Octokit({
-      auth: token,
-      userAgent: 'ai-codebase-assistant/1.0.0',
+  constructor() {
+    this.octokit = new MyOctokit({
+      auth: process.env.GITHUB_TOKEN,           // PAT fine-grained o Installation Token
+      userAgent: 'ai-engine/1.0.0',
+      request: { timeout: 20_000 },            // 20s
+      throttle: {
+        onRateLimit: (retryAfter, options) => {
+          // Reintenta automáticamente 1 vez en rate-limit
+          this.logger.warn(`Rate limit on ${options.method} ${options.url}. Retrying after ${retryAfter}s.`);
+          return true;
+        },
+        onSecondaryRateLimit: (retryAfter, options) => {
+          this.logger.warn(`Secondary rate limit on ${options.method} ${options.url}. Retrying after ${retryAfter}s.`);
+          return true;
+        },
+      },
+      retry: { doNotRetry: ['429'] },
     });
-    
-    if (!token) {
-      this.logger.warn('[GITHUB-SERVICE] No GitHub token provided - API calls may fail');
-      this.logger.warn('[GITHUB-SERVICE] Set GITHUB_TOKEN environment variable or github.token in config');
-    } else {
-      this.logger.log('[GITHUB-SERVICE] GitHub token configured successfully');
-    }
   }
 
-  // Repository operations
-  async getRepositoryInfo(owner: string, repo: string): Promise<any> {
+  /**
+   * Lista archivos/directorios en un path (no recursivo).
+   * `ref` puede ser branch, tag o commit SHA. '/' o '' = raíz del repo.
+   */
+  async listFiles(owner: string, repo: string, path = '/', ref?: string) {
+    const normalized = path.replace(/^\/+/, '');
     try {
-      this.logger.log(`[GITHUB-SERVICE] Getting repository info: ${owner}/${repo}`);
-      const { data } = await this.octokit.repos.get({
+      const { data } = await this.octokit.rest.repos.getContent({
         owner,
         repo,
-      });
-      this.logger.log(`[GITHUB-SERVICE] Repository info retrieved successfully`);
-      return data;
-    } catch (error) {
-      this.logger.error(`[GITHUB-SERVICE] Failed to get repository info: ${error.message}`);
-      throw new Error(`Failed to get repository info: ${error.message}`);
-    }
-  }
-
-  async listFiles(owner: string, repo: string, path: string, ref?: string): Promise<any[]> {
-    try {
-      this.logger.log(`[GITHUB-SERVICE] Listing files: ${owner}/${repo} at path: ${path}${ref ? ` (ref: ${ref})` : ''}`);
-      const { data } = await this.octokit.repos.getContent({
-        owner,
-        repo,
-        path,
+        path: normalized || '',
         ref,
+        headers: { 'If-None-Match': '' }, // evita cache 304 en proxies intermedios
       });
-      const fileCount = Array.isArray(data) ? data.length : 1;
-      this.logger.log(`[GITHUB-SERVICE] Found ${fileCount} file(s)/directories`);
+
+      // Si es carpeta: array; si es archivo: objeto.
       return Array.isArray(data) ? data : [data];
-    } catch (error) {
-      this.logger.error(`[GITHUB-SERVICE] Failed to list files: ${error.message}`);
-      throw new Error(`Failed to list files: ${error.message}`);
+    } catch (e: any) {
+      this._rethrowAsHelpfulError(e, `listFiles(${owner}/${repo}:${path}@${ref ?? 'default'})`);
     }
   }
 
-  async getFileContent(owner: string, repo: string, path: string, ref?: string): Promise<any> {
+  /**
+   * Lee un archivo y devuelve contenido UTF-8 + metadatos (incluye sha).
+   * Usa el formato JSON (base64) para conservar `sha` sin hacks.
+   */
+  async getFileContent(owner: string, repo: string, path: string, ref?: string) {
+    const normalized = path.replace(/^\/+/, '');
     try {
-      this.logger.log(`[GITHUB-SERVICE] Getting file content: ${owner}/${repo} at path: ${path}${ref ? ` (ref: ${ref})` : ''}`);
-      const { data } = await this.octokit.repos.getContent({
+      const { data } = await this.octokit.rest.repos.getContent({
         owner,
         repo,
-        path,
+        path: normalized,
         ref,
       });
 
-      if (Array.isArray(data)) {
-        this.logger.warn(`[GITHUB-SERVICE] Path points to directory, not file: ${path}`);
-        throw new Error('Path points to a directory, not a file');
+      if (Array.isArray(data) || (data as any).type !== 'file') {
+        throw new Error('Path is not a file.');
       }
 
-      // If the content is base64 encoded
-      if ('content' in data && data.encoding === 'base64') {
-        const content = Buffer.from(data.content, 'base64').toString('utf-8');
-        this.logger.log(`[GITHUB-SERVICE] File content decoded, size: ${content.length} chars`);
-        return {
-          ...data,
-          decodedContent: content,
-        };
+      const file = data as unknown as {
+        name: string;
+        path: string;
+        sha: string;
+        size: number;
+        content: string;       // base64
+        encoding: 'base64';
+        html_url: string;
+      };
+
+      // Protección para archivos MUY grandes (GitHub devuelve 403/422 o truncado)
+      if (file.size > 5 * 1024 * 1024) { // 5MB aprox. límite cómodo de getContent
+        throw new Error('File too large to fetch via contents API.');
       }
 
-      this.logger.log(`[GITHUB-SERVICE] File content retrieved successfully`);
-      return data;
-    } catch (error) {
-      this.logger.error(`[GITHUB-SERVICE] Failed to get file content: ${error.message}`);
-      throw new Error(`Failed to get file content: ${error.message}`);
+      const decoded = Buffer.from(file.content, file.encoding).toString('utf8');
+      return {
+        name: file.name,
+        path: file.path,
+        size: file.size,
+        sha: file.sha,              // Útil para updates
+        content: decoded,
+        encoding: 'utf-8',
+        html_url: file.html_url,
+        ref: ref ?? 'default',
+      };
+    } catch (e: any) {
+      this._rethrowAsHelpfulError(e, `getFileContent(${owner}/${repo}:${path}@${ref ?? 'default'})`);
     }
   }
 
-  async writeFile(
-    owner: string,
-    repo: string,
-    path: string,
-    content: string,
-    message: string,
-    branch?: string,
-    sha?: string
-  ): Promise<any> {
+  /**
+   * Crea o actualiza un archivo (un commit por archivo).
+   * - Para UPDATE se requiere `sha` actual del blob (expectedSha). Si no se pasa,
+   *   intenta leerlo y si existe lo usa; si no existe, crea el archivo.
+   */
+  async upsertFile(params: UpsertParams) {
+    const {
+      owner, repo, path, content, message,
+      branch = 'main', author, committer, expectedSha,
+    } = params;
+
     try {
-      this.logger.log(`[GITHUB-SERVICE] Writing file: ${owner}/${repo} at path: ${path}${branch ? ` (branch: ${branch})` : ''}`);
-      
-      // If no SHA is provided, we need to check if the file exists to get its SHA
+      let sha = expectedSha;
+
       if (!sha) {
+        // Intentar ver si el archivo existe para obtener sha
         try {
-          const fileData = await this.getFileContent(owner, repo, path, branch);
-          if (fileData && fileData.sha) {
-            sha = fileData.sha;
-            this.logger.log(`[GITHUB-SERVICE] File exists, will update with SHA: ${sha?.substring(0, 8)}...`);
-          }
-        } catch (error) {
-          // File doesn't exist, will be created
-          this.logger.log(`[GITHUB-SERVICE] File ${path} doesn't exist, will be created`);
+          const { data } = await this.octokit.rest.repos.getContent({ owner, repo, path, ref: branch });
+          if (!Array.isArray(data)) sha = (data as any).sha;
+        } catch (e: any) {
+          if (e.status !== 404) throw e; // 404 => no existe (CREATE)
         }
       }
 
-      // Create/update the file
-      const { data } = await this.octokit.repos.createOrUpdateFileContents({
+      const encoded = Buffer.isBuffer(content)
+        ? content.toString('base64')
+        : Buffer.from(content, 'utf8').toString('base64');
+
+      const { data } = await this.octokit.rest.repos.createOrUpdateFileContents({
         owner,
         repo,
         path,
         message,
-        content: Buffer.from(content).toString('base64'),
-        branch: branch || 'main', // Default to 'main' if no branch is specified
-        sha, // SHA is required for updating existing files
+        content: encoded,
+        branch,
+        sha, // undefined => create; con valor => update
+        author,
+        committer,
       });
 
-      this.logger.log(`[GITHUB-SERVICE] File written successfully: ${data.commit.html_url}`);
-      return data;
-    } catch (error) {
-      this.logger.error(`[GITHUB-SERVICE] Failed to write file: ${error.message}`);
-      throw new Error(`Failed to write file: ${error.message}`);
+      return data; // incluye content.sha nuevo y commit info
+    } catch (e: any) {
+      if (e.status === 409) {
+        // Conflicto de sha (alguien cambió el archivo). Propagá claramente.
+        throw new Error('Conflict: the file has changed on GitHub. Fetch latest sha and retry.');
+      }
+      this._rethrowAsHelpfulError(e, `upsertFile(${owner}/${repo}:${path}@${branch})`);
     }
   }
 
-  // Issue operations
-  async createIssue(
-    owner: string, 
-    repo: string, 
-    title: string, 
-    body: string, 
-    labels?: string[]
-  ): Promise<any> {
+  /**
+   * Borra un archivo (requiere sha actual).
+   */
+  async deleteFile(params: DeleteParams) {
+    const { owner, repo, path, message = `chore: delete ${path}`, branch = 'main' } = params;
     try {
-      const { data } = await this.octokit.issues.create({
+      const { data } = await this.octokit.rest.repos.getContent({ owner, repo, path, ref: branch });
+      if (Array.isArray(data)) throw new Error('Path is a directory, not a file');
+
+      const sha = (data as any).sha;
+
+      const res = await this.octokit.rest.repos.deleteFile({
         owner,
         repo,
-        title,
-        body,
-        labels,
+        path,
+        message,
+        branch,
+        sha,
       });
-      return data;
-    } catch (error) {
-      throw new Error(`Failed to create issue: ${error.message}`);
+      return res.data;
+    } catch (e: any) {
+      this._rethrowAsHelpfulError(e, `deleteFile(${owner}/${repo}:${path}@${branch})`);
     }
   }
 
-  async listIssues(
-    owner: string, 
-    repo: string, 
-    state: string = 'open', 
-    labels?: string[]
-  ): Promise<any[]> {
+  /**
+   * (Opcional) Listado recursivo eficiente: usa git tree recursivo (no baja contenidos).
+   * Útil para “listar todo el repo” o hacer búsquedas por extensión.
+   */
+  async listTreeRecursive(owner: string, repo: string, ref = 'main') {
     try {
-      const { data } = await this.octokit.issues.listForRepo({
+      // Resolver ref (branch/tag) a commit sha; si ya viene sha de commit, GitHub lo acepta igual.
+      const { data } = await this.octokit.rest.git.getTree({
         owner,
         repo,
-        state: state as 'open' | 'closed' | 'all',
-        labels: labels?.join(','),
+        tree_sha: ref,
+        recursive: 'true',
       });
-      return data;
-    } catch (error) {
-      throw new Error(`Failed to list issues: ${error.message}`);
+      return data.tree; // [{ path, type: 'blob'|'tree', sha, size? }, ...]
+    } catch (e: any) {
+      this._rethrowAsHelpfulError(e, `listTreeRecursive(${owner}/${repo}@${ref})`);
     }
   }
 
-  async getIssue(owner: string, repo: string, issueNumber: number): Promise<any> {
-    try {
-      const { data } = await this.octokit.issues.get({
-        owner,
-        repo,
-        issue_number: issueNumber,
-      });
-      return data;
-    } catch (error) {
-      throw new Error(`Failed to get issue: ${error.message}`);
-    }
-  }
-
-  // Pull request operations
-  async createPullRequest(
-    owner: string,
-    repo: string,
-    title: string,
-    body: string,
-    head: string,
-    base: string
-  ): Promise<any> {
-    try {
-      const { data } = await this.octokit.pulls.create({
-        owner,
-        repo,
-        title,
-        body,
-        head,
-        base,
-      });
-      return data;
-    } catch (error) {
-      throw new Error(`Failed to create pull request: ${error.message}`);
-    }
-  }
-
-  async getPullRequest(owner: string, repo: string, pullNumber: number): Promise<any> {
-    try {
-      const { data } = await this.octokit.pulls.get({
-        owner,
-        repo,
-        pull_number: pullNumber,
-      });
-      return data;
-    } catch (error) {
-      throw new Error(`Failed to get pull request: ${error.message}`);
-    }
-  }
-
-  async listPullRequests(owner: string, repo: string, state: string = 'open'): Promise<any[]> {
-    try {
-      const { data } = await this.octokit.pulls.list({
-        owner,
-        repo,
-        state: state as 'open' | 'closed' | 'all',
-      });
-      return data;
-    } catch (error) {
-      throw new Error(`Failed to list pull requests: ${error.message}`);
-    }
+  private _rethrowAsHelpfulError(e: any, ctx: string): never {
+    const code = e?.status || e?.code || 'ERR';
+    const msg = e?.message || 'Unknown error';
+    this.logger.error(`[GitHubService] ${ctx} failed: [${code}] ${msg}`);
+    throw new Error(`GitHub error (${code}) in ${ctx}: ${msg}`);
   }
 }

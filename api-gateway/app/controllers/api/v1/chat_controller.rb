@@ -61,41 +61,55 @@ module Api
       end
       
       def forward_to_ai_engine(params)
-        # Get the AI engine base URL (include API prefix by default)
-        ai_engine_url = ENV.fetch('AI_ENGINE_URL', 'http://localhost:3001/api/v1')
-        endpoint = params[:tools].present? ? '/ai/generate-with-tools' : '/ai/generate'
-        
-        full_url = "#{ai_engine_url}#{endpoint}"
-        Rails.logger.info "[API-GATEWAY] Making request to AI Engine: #{full_url}"
-        Rails.logger.info "[API-GATEWAY] Request params: model=#{params[:model]}, prompt_length=#{params[:prompt]&.length}"
-        
-        request_start_time = Time.current
-        
-        # Make request to AI Engine
-        response = HTTP.post(full_url, json: {
-          prompt: params[:prompt],
+        ai_engine_base = ENV.fetch('AI_ENGINE_URL', 'http://localhost:3001/api/v1')
+        use_tools = ActiveModel::Type::Boolean.new.cast(params.dig(:options, :use_tools))
+        endpoint  = use_tools ? '/ai/generate-with-tools' : '/ai/generate'
+        full_url  = "#{ai_engine_base}#{endpoint}"
+      
+        Rails.logger.info "[API-GATEWAY] -> AI: #{full_url}"
+      
+        req_headers = {
+          'Content-Type'   => 'application/json',
+          'Accept'         => 'application/json',
+          # Trazabilidad:
+          'X-Request-Id'   => request.request_id,
+          'X-Forwarded-For'=> request.remote_ip,
+          # Token interno opcional si protegés el AI-Engine a nivel red:
+          'X-Internal-Token' => ENV['AI_ENGINE_INTERNAL_TOKEN']
+        }.compact
+      
+        payload = {
+          prompt:  params[:prompt],
           options: {
             model: params[:model],
-            **params[:options].to_h
-          },
-          tools: params[:tools]
-        })
-        
-        request_duration = Time.current - request_start_time
-        Rails.logger.info "[API-GATEWAY] AI Engine response received in #{request_duration} seconds"
-        Rails.logger.info "[API-GATEWAY] AI Engine response status: #{response.status}"
-        
-        # Parse and return response
+            **(params[:options] || {}).to_h
+          }
+        }
+      
+        # timeouts razonables (http.rb)
+        http_client = HTTP.timeout(connect: 5, write: 10, read: 25)
+                          .headers(req_headers)
+      
         begin
-          parsed_response = JSON.parse(response.body.to_s)
-          Rails.logger.info "[API-GATEWAY] Successfully parsed AI Engine response"
-          return parsed_response
-        rescue JSON::ParserError => e
-          Rails.logger.error "[API-GATEWAY] Failed to parse AI Engine response: #{e.message}"
-          Rails.logger.error "[API-GATEWAY] Response body: #{response.body.to_s[0..500]}"
-          raise "Invalid JSON response from AI Engine: #{e.message}"
+          started = Time.current
+          response = http_client.post(full_url, json: payload)
+          dur = Time.current - started
+      
+          Rails.logger.info "[API-GATEWAY] <- AI status=#{response.status} in #{dur.round(2)}s"
+      
+          # Si no es 2xx, levanta con el cuerpo (útil para debug)
+          unless response.status.success?
+            body = response.to_s
+            raise "AI Engine error (#{response.status}): #{body.first(500)}"
+          end
+      
+          JSON.parse(response.to_s)
+        rescue => e
+          Rails.logger.error "[API-GATEWAY] forward_to_ai_engine failed: #{e.message}"
+          raise
         end
       end
+      
       
       def authenticate_api_key!
         header_key = request.headers['X-API-Key']
