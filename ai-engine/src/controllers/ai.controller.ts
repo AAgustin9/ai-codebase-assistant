@@ -21,6 +21,7 @@ import {
   DeleteFileDto,
   ListTreeQueryDto,
 } from '../interfaces/dto/github.dto';
+import { githubTools } from '../utils/github-tools';
 
 @Controller('ai')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -56,7 +57,7 @@ export class AiController {
     try {
       const start = Date.now();
       // Si usás herramientas tipo “githubTools”, inyectalas desde tu AiService
-      const result = await this.aiService.generateTextWithTools(dto.prompt, dto.options);
+      const result = await this.aiService.generateTextWithTools(dto.prompt, githubTools, dto.options);
       return {
         text: result.text,
         toolResults: result.toolCalls ?? [],

@@ -1,15 +1,15 @@
+import { IsString, IsOptional, IsObject } from 'class-validator';
+import { Type } from 'class-transformer';
+
 /**
  * DTO for text generation request
  */
 export class GenerateTextDto {
-  /**
-   * The prompt to send to the LLM
-   */
+  @IsString()
   prompt: string;
   
-  /**
-   * Optional configuration for the LLM
-   */
+  @IsOptional()
+  @IsObject()
   options?: {
     /**
      * The model to use for generation
@@ -36,14 +36,11 @@ export class GenerateTextDto {
  * DTO for text generation with tools request
  */
 export class GenerateTextWithToolsDto {
-  /**
-   * The prompt to send to the LLM
-   */
+  @IsString()
   prompt: string;
   
-  /**
-   * Optional configuration for the LLM
-   */
+  @IsOptional()
+  @IsObject()
   options?: {
     /**
      * The model to use for generation

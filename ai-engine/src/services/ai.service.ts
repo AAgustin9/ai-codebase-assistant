@@ -40,9 +40,10 @@ export class AiService implements IAiService {
       
       this.logger.log(`[AI-SERVICE] Calling AI provider for text generation`);
       const { model: _omitModel, openaiApiKey: _omitKey, ...safeOptions } = options || {};
+      // Replace prompt field with messages array
       const result = await generateText({
         model: modelProvider,
-        prompt,
+        messages: [{ role: 'user', content: prompt }],
         ...safeOptions,
       });
 
@@ -57,66 +58,75 @@ export class AiService implements IAiService {
     }
   }
 
-  /**
+    /**
    * Generates text with tool usage capabilities
    * @param prompt The prompt to send to the LLM
    * @param tools Array of tools available to the LLM
    * @param options Optional configuration for the LLM
    * @returns The generated text response and any tool calls made
    */
-  async generateTextWithTools(
-    prompt: string,
-    tools: any,
-    options?: Record<string, any>
-  ): Promise<{ text: string; toolCalls: any[] }> {
-    try {
-      // Get the model name and determine the appropriate provider
-      const modelName = options?.model || this.defaultModel;
-      // Resolve API key from request options first, then config/env
-      const modelApiKey =
-        options?.openaiApiKey ||
-        this.configService.get<string>('ai.openaiApiKey') ||
-        process.env.OPENAI_API_KEY;
-      
-      this.logger.log(`[AI-SERVICE] Generating text with tools using model: ${modelName}`);
-      this.logger.log(`[AI-SERVICE] Prompt length: ${prompt?.length || 0} characters`);
-      this.logger.log(`[AI-SERVICE] API Key provided: ${modelApiKey ? 'Yes' : 'No'}`);
-      this.logger.log(`[AI-SERVICE] Available tools: ${Object.keys(tools).length}`);
-      
-      const startTime = Date.now();
-      this.logger.log(`[AI-SERVICE] Getting model provider`);
-      const modelProvider = getModelProvider(modelName, modelApiKey);
-      
-      // Tools are already in the correct format (object)
-      const toolSet = tools;
-      
-      this.logger.log(`[AI-SERVICE] Using tools: ${JSON.stringify(Object.keys(toolSet))}`);
-      
-      // Pass tools directly to the AI SDK
-      const { model: _omitModel2, openaiApiKey: _omitKey2, ...safeOptions2 } = options || {};
-      const result = await generateText({
-        model: modelProvider,
-        prompt,
-        tools: toolSet,
-        ...safeOptions2,
-      });
-
-      const duration = Date.now() - startTime;
-      this.logger.log(`[AI-SERVICE] Text generation with tools completed in ${duration}ms`);
-      this.logger.log(`[AI-SERVICE] Response: text length=${result.text?.length || 0}, tool calls=${result.toolCalls?.length || 0}`);
-      
-      if (result.toolCalls?.length) {
-        const toolNames = ((result.toolCalls as any[]) || []).map((tc: any) => tc?.name ?? 'unknown');
-        this.logger.log(`[AI-SERVICE] Tool calls requested: ${toolNames.join(', ')}`);
+    async generateTextWithTools(
+      prompt: string,
+      tools: Record<string, any>,
+      options?: Record<string, any>
+    ): Promise<{ text: string; toolCalls: any[] }> {
+      try {
+        // Get the model name and determine the appropriate provider
+        const modelName = options?.model || this.defaultModel;
+        const modelApiKey =
+          options?.openaiApiKey ||
+          this.configService.get<string>('ai.openaiApiKey') ||
+          process.env.OPENAI_API_KEY;
+  
+        this.logger.log(`[AI-SERVICE] Generating text with tools using model: ${modelName}`);
+        this.logger.log(`[AI-SERVICE] Prompt length: ${prompt?.length || 0} characters`);
+        this.logger.log(`[AI-SERVICE] API Key provided: ${modelApiKey ? 'Yes' : 'No'}`);
+        this.logger.log(`[AI-SERVICE] Available tools: ${Object.keys(tools || {}).length}`);
+  
+        const startTime = Date.now();
+        const modelProvider = getModelProvider(modelName, modelApiKey);
+  
+        // Normalize tool schemas: enforce type:"object" if missing
+        const toolSet: Record<string, any> = {};
+        for (const [name, tool] of Object.entries(tools || {})) {
+          toolSet[name] = {
+            description: (tool as any).description || `Tool: ${name}`,
+            // Use the stored JSON schema parameters
+            parameters: (tool as any).parameters || {
+              type: "object",
+              properties: {}
+            },
+            execute: (tool as any).execute,
+          };
+        }
+  
+        this.logger.log(`[AI-SERVICE] Using tools: ${JSON.stringify(Object.keys(toolSet))}`);
+  
+        const { model: _omitModel2, openaiApiKey: _omitKey2, ...safeOptions2 } = options || {};
+        const result = await generateText({
+          model: modelProvider,
+          messages: [{ role: 'user', content: prompt }],
+          tools: toolSet,
+          ...safeOptions2,
+        });
+  
+        const duration = Date.now() - startTime;
+        this.logger.log(`[AI-SERVICE] Text generation with tools completed in ${duration}ms`);
+        this.logger.log(`[AI-SERVICE] Response: text length=${result.text?.length || 0}, tool calls=${result.toolCalls?.length || 0}`);
+  
+        if (result.toolCalls?.length) {
+          const toolNames = (result.toolCalls as any[]).map(tc => tc?.name ?? 'unknown');
+          this.logger.log(`[AI-SERVICE] Tool calls requested: ${toolNames.join(', ')}`);
+        }
+  
+        return {
+          text: result.text,
+          toolCalls: result.toolCalls || [],
+        };
+      } catch (error) {
+        this.logger.error(`[AI-SERVICE] Failed to generate text with tools: ${error.message}`, error.stack);
+        throw new Error(`Failed to generate text with tools: ${error.message}`);
       }
-
-      return {
-        text: result.text,
-        toolCalls: result.toolCalls || [],
-      };
-    } catch (error) {
-      this.logger.error(`[AI-SERVICE] Failed to generate text with tools: ${error.message}`, error.stack);
-      throw new Error(`Failed to generate text with tools: ${error.message}`);
     }
-  }
+  
 }

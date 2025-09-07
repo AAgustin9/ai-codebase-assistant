@@ -1,4 +1,5 @@
-import { z } from 'zod';
+// Removed Zod import; using plain JSON schema parameters
+import { jsonSchema } from '@ai-sdk/provider-utils';
 
 /**
  * Creates a properly formatted tool definition for the Vercel AI SDK
@@ -7,11 +8,12 @@ import { z } from 'zod';
  * @param parameters Zod schema for the tool parameters
  * @returns A tool definition object
  */
-export function createTool(name: string, description: string, parameters: z.ZodObject<any>) {
+export function createTool(name: string, description: string, parameters: object) {
   return {
     [name]: {
       description,
-      parameters,
+      // Use JSON schema directly for tool input schema
+      inputSchema: parameters,
     }
   };
 }
