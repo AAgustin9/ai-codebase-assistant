@@ -10,6 +10,8 @@ Rails.application.routes.draw do
     namespace :v1 do
       post 'chat', to: 'chat#create'
       get 'analytics', to: 'analytics#index'
+      # Handle CORS preflight requests
+      match '*path', to: 'cors#preflight', via: [:options]
     end
   end
 end

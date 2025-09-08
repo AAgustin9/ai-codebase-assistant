@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -24,77 +24,74 @@ ChartJS.register(
   Legend
 );
 
-// Define types for analytics data
-type AnalyticsData = {
+interface AnalyticsData {
   total_requests: number;
   requests_by_day: Record<string, number>;
   requests_by_model: Record<string, number>;
   requests_by_status: Record<string, number>;
-  average_duration: number;
+  average_duration: number | null;
   recent_requests: Array<{
     id: number;
     prompt: string;
     model: string;
     status: string;
     created_at: string;
-    duration_ms: number;
+    duration_ms: number | null;
   }>;
-};
+}
 
 export default function AnalyticsDashboard() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [timeRange, setTimeRange] = useState<string>('30d');
+  const [hasInitialLoad, setHasInitialLoad] = useState<boolean>(false);
 
+  // Fetch analytics data function - only called manually
   const fetchAnalytics = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // Calculate date ranges
-      const endDate = new Date();
-      let startDate = new Date();
-      
-      switch (timeRange) {
-        case '7d':
-          startDate.setDate(endDate.getDate() - 7);
-          break;
-        case '30d':
-          startDate.setDate(endDate.getDate() - 30);
-          break;
-        case '90d':
-          startDate.setDate(endDate.getDate() - 90);
-          break;
-        default:
-          startDate.setDate(endDate.getDate() - 30);
-      }
-
-      const response = await fetch(`/api/analytics?start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`);
+      console.log('Fetching analytics data...');
+      const response = await fetch('http://localhost:3003/api/v1/analytics', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors',
+      });
 
       if (!response.ok) {
         const contentType = response.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
           const err = await response.json();
-          throw new Error(err.error || 'Failed to fetch analytics data');
+          throw new Error(err.error || `HTTP ${response.status}: Failed to fetch analytics data`);
         } else {
           const text = await response.text();
-          throw new Error(text || 'Failed to fetch analytics data');
+          throw new Error(`HTTP ${response.status}: ${text || 'Failed to fetch analytics data'}`);
         }
       }
 
       const data = await response.json();
+      console.log('Analytics data received:', data);
       setAnalyticsData(data);
     } catch (err: any) {
       setError(err.message || 'An error occurred while fetching analytics');
+      console.error('Analytics fetch error:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch analytics data only once when component mounts
   useEffect(() => {
-    fetchAnalytics();
-  }, [timeRange]);
+    if (!hasInitialLoad) {
+      console.log('Component mounted, fetching analytics...');
+      setHasInitialLoad(true);
+      fetchAnalytics();
+    }
+  }, []); // Empty dependency array - runs only once on mount
+
 
   // Prepare chart data for requests by day
   const requestsByDayData = {
@@ -165,30 +162,23 @@ export default function AnalyticsDashboard() {
     <div className={theme.panel.container}>
       <div className={theme.panel.headerBar}>
         <h2 className={theme.text.heading}>Analytics Dashboard</h2>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 items-center">
+          <span className="px-3 py-1 rounded bg-gray-200 text-black text-sm">
+            Last 30 Days
+          </span>
           <button
-            onClick={() => setTimeRange('7d')}
-            className={`px-3 py-1 rounded ${
-              timeRange === '7d' ? theme.button.primaryActive : theme.button.neutral
+            onClick={() => {
+              console.log('Refresh button clicked');
+              fetchAnalytics();
+            }}
+            disabled={loading}
+            className={`px-3 py-1 rounded text-sm transition-colors ${
+              loading 
+                ? 'bg-gray-300 text-black cursor-not-allowed' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
           >
-            7 Days
-          </button>
-          <button
-            onClick={() => setTimeRange('30d')}
-            className={`px-3 py-1 rounded ${
-              timeRange === '30d' ? theme.button.primaryActive : theme.button.neutral
-            }`}
-          >
-            30 Days
-          </button>
-          <button
-            onClick={() => setTimeRange('90d')}
-            className={`px-3 py-1 rounded ${
-              timeRange === '90d' ? theme.button.primaryActive : theme.button.neutral
-            }`}
-          >
-            90 Days
+            {loading ? 'Loading...' : 'Refresh'}
           </button>
         </div>
       </div>
@@ -198,17 +188,17 @@ export default function AnalyticsDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className={theme.cards.primary}>
               <h3 className={`${theme.text.subheading} mb-2`}>Total Requests</h3>
-              <p className="text-3xl font-bold">{analyticsData.total_requests}</p>
+              <p className="text-3xl font-bold text-black">{analyticsData.total_requests}</p>
             </div>
             <div className={theme.cards.success}>
               <h3 className={`${theme.text.subheading} mb-2`}>Average Duration</h3>
-              <p className="text-3xl font-bold">
+              <p className="text-3xl font-bold text-black">
                 {analyticsData.average_duration ? `${Math.round(analyticsData.average_duration)}ms` : 'N/A'}
               </p>
             </div>
             <div className={theme.cards.accent}>
               <h3 className={`${theme.text.subheading} mb-2`}>Success Rate</h3>
-              <p className="text-3xl font-bold">
+              <p className="text-3xl font-bold text-black">
                 {analyticsData.requests_by_status && 
                  analyticsData.total_requests > 0 ? 
                   `${Math.round((analyticsData.requests_by_status['1'] || 0) / analyticsData.total_requests * 100)}%` : 
@@ -234,33 +224,39 @@ export default function AnalyticsDashboard() {
               <table className="min-w-full bg-white">
                 <thead className="bg-gray-100">
                   <tr>
-                    <th className="px-4 py-2 text-left">ID</th>
-                    <th className="px-4 py-2 text-left">Prompt</th>
-                    <th className="px-4 py-2 text-left">Model</th>
-                    <th className="px-4 py-2 text-left">Status</th>
-                    <th className="px-4 py-2 text-left">Time</th>
-                    <th className="px-4 py-2 text-left">Duration</th>
+                    <th className="px-4 py-2 text-left text-black">ID</th>
+                    <th className="px-4 py-2 text-left text-black">Prompt</th>
+                    <th className="px-4 py-2 text-left text-black">Model</th>
+                    <th className="px-4 py-2 text-left text-black">Status</th>
+                    <th className="px-4 py-2 text-left text-black">Time</th>
+                    <th className="px-4 py-2 text-left text-black">Duration</th>
                   </tr>
                 </thead>
                 <tbody>
                   {analyticsData.recent_requests.map(request => (
                     <tr key={request.id} className="border-t">
-                      <td className="px-4 py-2">{request.id}</td>
-                      <td className="px-4 py-2">{request.prompt}</td>
-                      <td className="px-4 py-2">{request.model}</td>
+                      <td className="px-4 py-2 text-black">{request.id}</td>
+                      <td className="px-4 py-2 text-black">{request.prompt}</td>
+                      <td className="px-4 py-2 text-black">
+                        {request.model === '0' ? 'GPT' : 
+                         request.model === '1' ? 'Claude' : 
+                         request.model === '2' ? 'Gemini' : request.model}
+                      </td>
                       <td className="px-4 py-2">
                         <span 
                           className={`px-2 py-1 rounded text-xs ${
-                            request.status === 'success' ? theme.chip.success :
-                            request.status === 'error' ? theme.chip.error :
+                            request.status === '1' || request.status === 'success' ? theme.chip.success :
+                            request.status === '2' || request.status === 'error' ? theme.chip.error :
                             theme.chip.warning
                           }`}
                         >
-                          {request.status}
+                          {request.status === '0' ? 'Pending' :
+                           request.status === '1' ? 'Success' :
+                           request.status === '2' ? 'Error' : request.status}
                         </span>
                       </td>
-                      <td className="px-4 py-2">{new Date(request.created_at).toLocaleString()}</td>
-                      <td className="px-4 py-2">{request.duration_ms ? `${request.duration_ms}ms` : 'N/A'}</td>
+                      <td className="px-4 py-2 text-black">{new Date(request.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-black">{request.duration_ms ? `${request.duration_ms}ms` : 'N/A'}</td>
                     </tr>
                   ))}
                 </tbody>
