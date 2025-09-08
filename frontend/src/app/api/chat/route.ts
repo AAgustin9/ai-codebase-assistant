@@ -1,14 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Normalize different response formats into a consistent structure
+function normalizeResponse(responseData: any, toolsValue: number) {
+  switch (toolsValue) {
+    case 0: // Regular chat (/ai/generate)
+      return {
+        text: responseData.result || '',
+        toolCalls: [],
+        type: 'chat'
+      };
+    
+    case 1: // List files (/github/files)
+      return {
+        text: `Found ${responseData.count || 0} items in ${responseData.repository || 'repository'}:`,
+        toolCalls: [{
+          type: 'list_files',
+          data: responseData
+        }],
+        type: 'github_list'
+      };
+    
+    case 2: // Read file (/github/content)
+      return {
+        text: `File content from ${responseData.repository || 'repository'}:`,
+        toolCalls: [{
+          type: 'read_file',
+          data: responseData
+        }],
+        type: 'github_content'
+      };
+    
+    case 3: // Write file (/github/upsert)
+      return {
+        text: `File ${responseData.path || 'file'} has been ${responseData.commit ? 'updated' : 'created'} in ${responseData.repository || 'repository'}.`,
+        toolCalls: [{
+          type: 'write_file',
+          data: responseData
+        }],
+        type: 'github_write'
+      };
+    
+    default:
+      return {
+        text: responseData.result || responseData.message || 'Response received',
+        toolCalls: [],
+        type: 'unknown'
+      };
+  }
+}
+
 export async function POST(req: NextRequest) {
   console.log('[FRONTEND] Received chat request');
   try {
-    const { prompt, model, modelApiKey } = await req.json();
+    const { prompt, model } = await req.json();
     
     console.log(`[FRONTEND] Request details: model=${model}, prompt length=${prompt?.length || 0}`);
-    
-    // Extract the API key from the request headers (optional)
-    const apiKey = req.headers.get('X-API-Key');
     
     if (!prompt) {
       console.log('[FRONTEND] Error: Prompt is missing');
@@ -18,50 +64,48 @@ export async function POST(req: NextRequest) {
       );
     }
     
+    // Get API Gateway URL
+    const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:3003/api/v1';
+    
+    if (!apiGatewayUrl) {
+      console.error('[FRONTEND] Error: API Gateway URL not configured');
+      return NextResponse.json(
+        { error: 'API Gateway not configured' },
+        { status: 500 }
+      );
+    }
+
+    // Determine GitHub operation type
+    let toolsValue = 0; // Default: no tools
+    if (prompt.toLowerCase().includes('github')) {
+      if (prompt.toLowerCase().includes('list files')) {
+        toolsValue = 1; // List files
+      } else if (prompt.toLowerCase().includes('read file')) {
+        toolsValue = 2; // Read file
+      } else if (prompt.toLowerCase().includes('write file')) {
+        toolsValue = 3; // Write file
+      }
+    }
+    
     // Prepare the payload for the API Gateway
     const payload = {
       prompt: prompt,
       model: model || 'gpt-4o',
-      modelApiKey: modelApiKey, // Forward the model API key
       options: {
-        temperature: 0.7
+        temperature: 0.7,
+        tools: toolsValue
       }
     };
     
-    // Check if this is a GitHub operation that needs tools
-    const isGitHubOperation = prompt.toLowerCase().includes('github') && 
-      (prompt.toLowerCase().includes('list files') || 
-       prompt.toLowerCase().includes('read file') || 
-       prompt.toLowerCase().includes('create issue') ||
-       prompt.toLowerCase().includes('write file'));
+    console.log(`[FRONTEND] Forwarding request to API Gateway: ${apiGatewayUrl}/chat`);
     
-    // Determine backend target
-    const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL;
-    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:3001/api/v1';
-    const useGateway = !!apiGatewayUrl;
-    
-    // Use tools endpoint for GitHub operations, regular endpoint otherwise
-    const endpoint = isGitHubOperation ? 'ai/generate-with-tools' : 'ai/generate';
-    const target = useGateway ? `${apiGatewayUrl}/api/v1/chat` : `${aiEngineUrl}/${endpoint}`;
-    
-    console.log(`[FRONTEND] GitHub operation detected: ${isGitHubOperation}`);
-    console.log(`[FRONTEND] Forwarding request to: ${target}`);
-    
-    // Make the request to the chosen backend
-    const response = await fetch(target, {
+    // Make the request to the API Gateway
+    const response = await fetch(`${apiGatewayUrl}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(useGateway ? { 'X-API-Key': apiKey || '' } : {}),
       },
-      body: JSON.stringify(
-        useGateway
-          ? payload
-          : {
-              prompt,
-              options: { model: payload.model, temperature: payload.options.temperature },
-            }
-      ),
+      body: JSON.stringify(payload),
     });
 
     console.log(`[FRONTEND] API Gateway response status: ${response.status}`);
@@ -95,32 +139,17 @@ export async function POST(req: NextRequest) {
 
     // Handle HTTP errors with JSON body
     if (!response.ok) {
-      console.error('[FRONTEND] Backend returned error:', responseData);
+      console.error('[FRONTEND] API Gateway returned error:', responseData);
       return NextResponse.json(
-        { error: responseData.error || responseData.message || 'Failed to get response from backend' },
+        { error: responseData.error || responseData.message || 'Failed to get response from API Gateway' },
         { status: response.status }
       );
     }
 
-    // Success: normalize ai-engine direct response shape to frontend shape
-    console.log('[FRONTEND] Successfully processed request, returning data');
-    if (useGateway) {
-      return NextResponse.json(responseData);
-    } else {
-      // Handle different ai-engine endpoints
-      if (isGitHubOperation) {
-        // ai-engine /ai/generate-with-tools -> { text: string, toolResults: [] }
-        const normalized = { 
-          text: responseData?.text ?? '', 
-          toolCalls: responseData?.toolResults || [] 
-        };
-        return NextResponse.json(normalized);
-      } else {
-        // ai-engine /ai/generate -> { result: string }
-        const normalized = { text: responseData?.result ?? '', toolCalls: [] };
-        return NextResponse.json(normalized);
-      }
-    }
+    // Success: normalize response based on tools value
+    console.log('[FRONTEND] Successfully processed request, normalizing response');
+    const normalizedResponse = normalizeResponse(responseData, toolsValue);
+    return NextResponse.json(normalizedResponse);
   } catch (error: any) {
     console.error('[FRONTEND] Unhandled error in chat route:', error);
     return NextResponse.json(

@@ -1,7 +1,6 @@
 module Api
   module V1
     class ChatController < ApplicationController
-      before_action :authenticate_api_key!
       
       # POST /api/v1/chat
       def create
@@ -47,24 +46,58 @@ module Api
       private
       
       def chat_params
-        params.permit(:prompt, :model, tools: [], options: {})
+        # Handle both direct params and nested chat params
+        if params[:chat].present?
+          params.require(:chat).permit(:prompt, :model, options: {})
+        else
+          params.permit(:prompt, :model, options: {})
+        end
       end
       
+      # analytics
       def create_api_request
-        @current_api_key.api_requests.create!(
+        # Map model names to enum values
+        model_name = chat_params[:model] || 'gpt'
+        model_provider = case model_name.downcase
+        when /gpt/
+          'gpt'
+        when /claude/
+          'claude'
+        when /gemini/
+          'gemini'
+        else
+          'gpt'  # default fallback
+        end
+        
+        ApiRequest.create!(
           prompt: chat_params[:prompt],
-          model_provider: chat_params[:model] || 'gpt',
+          model_provider: model_provider,
           ip_address: request.remote_ip,
           user_agent: request.user_agent,
-          status: :pending
+          status: :pending,
+          api_key: nil  # No API key required
         )
       end
       
       def forward_to_ai_engine(params)
         ai_engine_base = ENV.fetch('AI_ENGINE_URL', 'http://localhost:3001/api/v1')
-        use_tools = ActiveModel::Type::Boolean.new.cast(params.dig(:options, :use_tools))
-        endpoint  = use_tools ? '/ai/generate-with-tools' : '/ai/generate'
-        full_url  = "#{ai_engine_base}#{endpoint}"
+        tools_value = params.dig(:options, :tools).to_i
+        
+        # Route to different endpoints based on tools value
+        endpoint = case tools_value
+        when 0
+          '/ai/generate'
+        when 1
+          '/ai/github/files'
+        when 2
+          '/ai/github/content'
+        when 3
+          '/ai/github/upsert'
+        else
+          '/ai/ai/generate'
+        end
+        
+        full_url = "#{ai_engine_base}#{endpoint}"
       
         Rails.logger.info "[API-GATEWAY] -> AI: #{full_url}"
       
@@ -74,8 +107,6 @@ module Api
           # Trazabilidad:
           'X-Request-Id'   => request.request_id,
           'X-Forwarded-For'=> request.remote_ip,
-          # Token interno opcional si protegés el AI-Engine a nivel red:
-          'X-Internal-Token' => ENV['AI_ENGINE_INTERNAL_TOKEN']
         }.compact
       
         payload = {
@@ -110,32 +141,6 @@ module Api
         end
       end
       
-      
-      def authenticate_api_key!
-        header_key = request.headers['X-API-Key']
-        env_fallback_key = ENV['OPENAI_API_KEY']
-        api_key_value = header_key.presence || env_fallback_key
-        Rails.logger.info "[API-GATEWAY] Authenticating request with API key (header present? #{header_key.present?}, env fallback? #{env_fallback_key.present?})"
-        
-        if api_key_value.blank?
-          Rails.logger.warn "[API-GATEWAY] Authentication failed: API key is missing (no header, no env OPENAI_API_KEY)"
-          render json: { error: 'API key is missing' }, status: :unauthorized
-          return
-        end
-        
-        # Mask the API key for logging (show only first 4 and last 4 characters)
-        masked_key = api_key_value.length > 8 ? "#{api_key_value[0..3]}...#{api_key_value[-4..-1]}" : "****"
-        Rails.logger.info "[API-GATEWAY] Checking API key: #{masked_key}"
-        
-        @current_api_key = ApiKey.find_by(key: api_key_value, status: :active)
-        
-        if @current_api_key.nil?
-          Rails.logger.warn "[API-GATEWAY] Authentication failed: Invalid or revoked API key"
-          render json: { error: 'Invalid or revoked API key' }, status: :unauthorized
-        else
-          Rails.logger.info "[API-GATEWAY] Authentication successful for API key: #{masked_key}"
-        end
-      end
     end
   end
 end

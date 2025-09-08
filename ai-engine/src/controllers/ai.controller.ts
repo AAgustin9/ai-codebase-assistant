@@ -41,6 +41,7 @@ export class AiController {
       const result = await this.aiService.generateText(dto.prompt, dto.options);
       return {
         result,
+        toolResults: [],
         meta: { durationMs: Date.now() - start },
       };
     } catch (error: any) {
@@ -56,10 +57,9 @@ export class AiController {
   async generateTextWithTools(@Body() dto: GenerateTextWithToolsDto) {
     try {
       const start = Date.now();
-      // Si usás herramientas tipo “githubTools”, inyectalas desde tu AiService
       const result = await this.aiService.generateTextWithTools(dto.prompt, githubTools, dto.options);
       return {
-        text: result.text,
+        result: result.text,
         toolResults: result.toolCalls ?? [],
         meta: { durationMs: Date.now() - start },
       };
@@ -74,7 +74,69 @@ export class AiController {
 
   // ---------- GitHub: READ/LIST ----------
   /**
-   * Lista archivos/directorios de un path.
+   * Lista archivos/directorios de un path usando prompt para extraer parámetros.
+   * POST /ai/github/files
+   */
+  @Post('github/files')
+  async listRepositoryFilesFromPrompt(@Body() dto: GenerateTextDto) {
+    try {
+      const start = Date.now();
+      
+      // Use AI to extract repository information from the prompt
+      const result = await this.aiService.generateTextWithTools(dto.prompt, githubTools, dto.options);
+      
+      // Find the listRepositoryFiles tool call
+      const listFilesCall = result.toolCalls?.find((call: any) => call.name === 'listRepositoryFiles');
+      
+      if (!listFilesCall) {
+        throw new HttpException(
+          'Could not extract repository information from prompt. Please specify owner, repo, and optionally path and ref.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const { owner, repo, path = '/', ref = 'main' } = listFilesCall.args;
+      
+      if (!owner || !repo) {
+        throw new HttpException(
+          'Missing required parameters: owner and repo must be specified in the prompt.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Call the GitHub service with extracted parameters
+      const files = await this.githubService.listFiles(owner, repo, path, ref);
+      const items = files.map((f: any) => ({
+        name: f.name,
+        path: f.path,
+        type: f.type, // 'file' | 'dir'
+        size: f.size ?? 0,
+        sha: f.sha,
+        url: f.html_url ?? `https://github.com/${owner}/${repo}/blob/${ref}/${f.path}`,
+        download_url: f.download_url ?? null,
+      }));
+
+      return {
+        result: `Found ${items.length} items in ${owner}/${repo}${path}`,
+        toolResults: [listFilesCall],
+        meta: { durationMs: Date.now() - start },
+        repository: `${owner}/${repo}`,
+        path: path,
+        ref: ref,
+        count: items.length,
+        files: items,
+      };
+    } catch (error: any) {
+      this.logger.error(`listRepositoryFilesFromPrompt error: ${error.message}`);
+      throw new HttpException(
+        `Error listing repository files: ${error.message}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * Lista archivos/directorios de un path usando query parameters (método original).
    * GET /ai/github/files?owner=...&repo=...&path=/src&ref=main
    */
   @Get('github/files')
@@ -107,7 +169,64 @@ export class AiController {
   }
 
   /**
-   * Lee contenido de archivo.
+   * Lee contenido de archivo usando prompt para extraer parámetros.
+   * POST /ai/github/content
+   */
+  @Post('github/content')
+  async getRepositoryFileContentFromPrompt(@Body() dto: GenerateTextDto) {
+    try {
+      const start = Date.now();
+      
+      // Use AI to extract repository information from the prompt
+      const result = await this.aiService.generateTextWithTools(dto.prompt, githubTools, dto.options);
+      
+      // Find the getRepositoryFileContent tool call
+      const getContentCall = result.toolCalls?.find((call: any) => call.name === 'getRepositoryFileContent');
+      
+      if (!getContentCall) {
+        throw new HttpException(
+          'Could not extract file information from prompt. Please specify owner, repo, and file path.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const { owner, repo, path, ref = 'main' } = getContentCall.args;
+      
+      if (!owner || !repo || !path) {
+        throw new HttpException(
+          'Missing required parameters: owner, repo, and path must be specified in the prompt.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Call the GitHub service with extracted parameters
+      const file = await this.githubService.getFileContent(owner, repo, path, ref);
+      
+      return {
+        result: `Retrieved content from ${owner}/${repo}/${path}`,
+        toolResults: [getContentCall],
+        meta: { durationMs: Date.now() - start },
+        repository: `${owner}/${repo}`,
+        path: file.path,
+        ref: file.ref,
+        name: file.name,
+        size: file.size,
+        sha: file.sha,
+        encoding: file.encoding,
+        html_url: file.html_url,
+        content: file.content, // UTF-8 decodificado
+      };
+    } catch (error: any) {
+      this.logger.error(`getRepositoryFileContentFromPrompt error: ${error.message}`);
+      throw new HttpException(
+        `Error reading file content: ${error.message}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * Lee contenido de archivo usando query parameters (método original).
    * GET /ai/github/content?owner=...&repo=...&path=/README.md&ref=main
    */
   @Get('github/content')
@@ -159,11 +278,73 @@ export class AiController {
 
   // ---------- GitHub: WRITE ----------
   /**
-   * Crea/Actualiza archivo.
+   * Crea/Actualiza archivo usando prompt para extraer parámetros.
+   * POST /ai/github/upsert
+   */
+  @Post('github/upsert')
+  async upsertFileFromPrompt(@Body() dto: GenerateTextDto) {
+    try {
+      const start = Date.now();
+      
+      // Use AI to extract repository information from the prompt
+      const result = await this.aiService.generateTextWithTools(dto.prompt, githubTools, dto.options);
+      
+      // Find the upsertFile tool call
+      const upsertCall = result.toolCalls?.find((call: any) => call.name === 'upsertFile');
+      
+      if (!upsertCall) {
+        throw new HttpException(
+          'Could not extract file operation information from prompt. Please specify owner, repo, path, content, and message.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const { owner, repo, path, content, message, branch = 'main', expectedSha, author, committer } = upsertCall.args;
+      
+      if (!owner || !repo || !path || !content || !message) {
+        throw new HttpException(
+          'Missing required parameters: owner, repo, path, content, and message must be specified in the prompt.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Call the GitHub service with extracted parameters
+      const res = await this.githubService.upsertFile({
+        owner,
+        repo,
+        path,
+        content,
+        message,
+        branch,
+        expectedSha,
+        author,
+        committer,
+      });
+
+      return {
+        result: `Successfully ${expectedSha ? 'updated' : 'created'} file ${owner}/${repo}/${path}`,
+        toolResults: [upsertCall],
+        meta: { durationMs: Date.now() - start },
+        repository: `${owner}/${repo}`,
+        path: path,
+        branch: branch,
+        commit: res.commit,
+        content: res.content,
+      };
+    } catch (error: any) {
+      this.logger.error(`upsertFileFromPrompt error: ${error.message}`);
+      const status =
+        /Conflict/i.test(error.message) ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST;
+      throw new HttpException(`Error upserting file: ${error.message}`, status);
+    }
+  }
+
+  /**
+   * Crea/Actualiza archivo usando body parameters (método original).
    * POST /ai/github/upsert
    * body: { owner, repo, path, content, message, branch?, expectedSha? }
    */
-  @Post('github/upsert')
+  @Post('github/upsert-direct')
   async upsertFile(@Body() dto: UpsertFileDto) {
     try {
       const res = await this.githubService.upsertFile({

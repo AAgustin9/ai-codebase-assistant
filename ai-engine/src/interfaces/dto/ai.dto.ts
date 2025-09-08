@@ -17,15 +17,6 @@ export class GenerateTextDto {
     model?: string;
     
     /**
-     * The API key for the model
-     */
-    modelApiKey?: string;
-    /**
-     * Alternative OpenAI API key field
-     */
-    openai_api_key?: string;
-    
-    /**
      * Other options
      */
     [key: string]: any;
@@ -46,11 +37,6 @@ export class GenerateTextWithToolsDto {
      * The model to use for generation
      */
     model?: string;
-    
-    /**
-     * The API key for the model
-     */
-    modelApiKey?: string;
     
     /**
      * Other options

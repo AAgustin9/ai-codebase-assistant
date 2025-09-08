@@ -1,5 +1,4 @@
-// @ts-ignore: module lacks types
-import { streamUI } from '@ai-sdk/rsc/react-server';
+import { streamUI } from '@ai-sdk/rsc';
 import { gateway } from '@ai-sdk/gateway';
 import React from 'react';
 

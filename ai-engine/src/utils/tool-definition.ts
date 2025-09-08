@@ -12,8 +12,8 @@ export function createTool(name: string, description: string, parameters: object
   return {
     [name]: {
       description,
-      // Use JSON schema directly for tool input schema
-      inputSchema: parameters,
+      // Use JSON schema directly for tool parameters
+      parameters: parameters,
     }
   };
 }

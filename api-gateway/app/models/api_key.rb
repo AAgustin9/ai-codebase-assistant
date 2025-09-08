@@ -7,7 +7,7 @@ class ApiKey < ApplicationRecord
   validates :name, presence: true
   validates :key, uniqueness: true, allow_nil: true
   
-  enum status: { active: 0, revoked: 1 }
+  enum :status, { active: 0, revoked: 1 }
   
   private
   

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2024_08_01_000003) do
+ActiveRecord::Schema[8.0].define(version: 2025_09_08_141134) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -26,7 +26,7 @@ ActiveRecord::Schema[8.0].define(version: 2024_08_01_000003) do
   end
 
   create_table "api_requests", force: :cascade do |t|
-    t.bigint "api_key_id", null: false
+    t.bigint "api_key_id"
     t.text "prompt", null: false
     t.integer "model_provider", null: false
     t.integer "status", default: 0, null: false
@@ -44,6 +44,23 @@ ActiveRecord::Schema[8.0].define(version: 2024_08_01_000003) do
     t.index ["status"], name: "index_api_requests_on_status"
   end
 
+  create_table "chat_analytics", force: :cascade do |t|
+    t.bigint "api_request_id", null: false
+    t.integer "prompt_tokens", default: 0, null: false
+    t.integer "completion_tokens", default: 0, null: false
+    t.integer "total_tokens", default: 0, null: false
+    t.string "model", null: false
+    t.integer "response_time_ms", default: 0, null: false
+    t.json "tools_used", default: []
+    t.text "error_message"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["api_request_id"], name: "index_chat_analytics_on_api_request_id"
+    t.index ["created_at"], name: "index_chat_analytics_on_created_at"
+    t.index ["model"], name: "index_chat_analytics_on_model"
+    t.index ["total_tokens"], name: "index_chat_analytics_on_total_tokens"
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "email", null: false
     t.string "name"
@@ -54,4 +71,5 @@ ActiveRecord::Schema[8.0].define(version: 2024_08_01_000003) do
 
   add_foreign_key "api_keys", "users"
   add_foreign_key "api_requests", "api_keys"
+  add_foreign_key "chat_analytics", "api_requests"
 end

@@ -26,7 +26,6 @@ export class AiService implements IAiService {
       const modelName = options?.model || this.defaultModel;
       // Resolve API key from request options first, then config/env
       const modelApiKey =
-        options?.openaiApiKey ||
         this.configService.get<string>('ai.openaiApiKey') ||
         process.env.OPENAI_API_KEY;
       
@@ -74,7 +73,6 @@ export class AiService implements IAiService {
         // Get the model name and determine the appropriate provider
         const modelName = options?.model || this.defaultModel;
         const modelApiKey =
-          options?.openaiApiKey ||
           this.configService.get<string>('ai.openaiApiKey') ||
           process.env.OPENAI_API_KEY;
   
@@ -89,6 +87,7 @@ export class AiService implements IAiService {
         // Normalize tool schemas: enforce type:"object" if missing
         const toolSet: Record<string, any> = {};
         for (const [name, tool] of Object.entries(tools || {})) {
+          this.logger.log(`[AI-SERVICE] Processing tool ${name}: ${JSON.stringify(tool)}`);
           toolSet[name] = {
             description: (tool as any).description || `Tool: ${name}`,
             // Use the stored JSON schema parameters
@@ -101,6 +100,7 @@ export class AiService implements IAiService {
         }
   
         this.logger.log(`[AI-SERVICE] Using tools: ${JSON.stringify(Object.keys(toolSet))}`);
+        this.logger.log(`[AI-SERVICE] Tool set structure: ${JSON.stringify(toolSet, null, 2)}`);
   
         const { model: _omitModel2, openaiApiKey: _omitKey2, ...safeOptions2 } = options || {};
         const result = await generateText({
