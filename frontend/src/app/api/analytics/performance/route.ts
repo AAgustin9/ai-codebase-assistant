@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Build target URL
-    const target = `${apiGatewayUrl}/api/v1/analytics?start_date=${encodeURIComponent(startDate || '')}&end_date=${encodeURIComponent(endDate || '')}`;
+    const target = `${apiGatewayUrl}/api/v1/analytics/performance?start_date=${encodeURIComponent(startDate || '')}&end_date=${encodeURIComponent(endDate || '')}`;
 
     const response = await fetch(target, {
       method: 'GET',
@@ -32,10 +32,10 @@ export async function GET(req: NextRequest) {
     if (!response.ok) {
       if (contentType.includes('application/json')) {
         const err = await response.json();
-        return NextResponse.json({ error: err.error || err.message || 'Failed to fetch analytics' }, { status: response.status });
+        return NextResponse.json({ error: err.error || err.message || 'Failed to fetch performance analytics' }, { status: response.status });
       } else {
         const text = await response.text();
-        return NextResponse.json({ error: text || 'Failed to fetch analytics' }, { status: response.status });
+        return NextResponse.json({ error: text || 'Failed to fetch performance analytics' }, { status: response.status });
       }
     }
 
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(data);
   } catch (error: any) {
     return NextResponse.json(
-      { error: error.message || 'Unexpected error while fetching analytics' },
+      { error: error.message || 'Unexpected error while fetching performance analytics' },
       { status: 500 }
     );
   }

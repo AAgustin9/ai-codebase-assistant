@@ -1,5 +1,9 @@
 // Using plain JSON schema definitions for tools
 import { createTool, createToolSet } from './tool-definition';
+import { GitHubService } from '../services/github.service';
+
+// Create a GitHub service instance for tool execution
+const githubService = new GitHubService();
 
 /**
  * GitHub tools for AI integration

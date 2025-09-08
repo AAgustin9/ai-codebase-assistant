@@ -9,7 +9,12 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       post 'chat', to: 'chat#create'
+      
+      # Analytics routes
       get 'analytics', to: 'analytics#index'
+      get 'analytics/tokens', to: 'analytics#tokens'
+      get 'analytics/costs', to: 'analytics#costs'
+      get 'analytics/performance', to: 'analytics#performance'
     end
   end
 end

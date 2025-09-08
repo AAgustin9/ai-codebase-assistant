@@ -1,8 +1,9 @@
 class ApiRequest < ApplicationRecord
   belongs_to :api_key
+  has_one :chat_analytics, dependent: :destroy
 
-  enum status: { pending: 0, success: 1, error: 2 }
-  enum model_provider: { gpt: 0, claude: 1, gemini: 2 }
+  enum :status, { pending: 0, success: 1, error: 2 }
+  enum :model_provider, { gpt: 0, claude: 1, gemini: 2 }
   
   validates :prompt, presence: true
   validates :model_provider, presence: true

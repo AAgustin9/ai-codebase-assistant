@@ -18,9 +18,14 @@ export class AiService implements IAiService {
    * Generates text using the specified LLM
    * @param prompt The prompt to send to the LLM
    * @param options Optional configuration for the LLM
-   * @returns The generated text response
+   * @returns The generated text response with usage information
    */
-  async generateText(prompt: string, options?: Record<string, any>): Promise<string> {
+  async generateText(prompt: string, options?: Record<string, any>): Promise<{
+    text: string;
+    usage?: any;
+    finishReason?: any;
+    duration: number;
+  }> {
     try {
       // Get the model name and determine the appropriate provider
       const modelName = options?.model || this.defaultModel;
@@ -51,7 +56,17 @@ export class AiService implements IAiService {
       this.logger.log(`[AI-SERVICE] Text generation completed in ${duration}ms`);
       this.logger.log(`[AI-SERVICE] Response length: ${result.text?.length || 0} characters`);
       
-      return result.text;
+      // Log token usage if available
+      if (result.usage) {
+        this.logger.log(`[AI-SERVICE] Token usage - Input: ${result.usage.inputTokens}, Output: ${result.usage.outputTokens}, Total: ${result.usage.totalTokens}`);
+      }
+      
+      return {
+        text: result.text,
+        usage: result.usage,
+        finishReason: result.finishReason,
+        duration: duration
+      };
     } catch (error) {
       this.logger.error(`[AI-SERVICE] Failed to generate text: ${error.message}`, error.stack);
       throw new Error(`Failed to generate text: ${error.message}`);
@@ -63,13 +78,13 @@ export class AiService implements IAiService {
    * @param prompt The prompt to send to the LLM
    * @param tools Array of tools available to the LLM
    * @param options Optional configuration for the LLM
-   * @returns The generated text response and any tool calls made
+   * @returns The generated text response and any tool calls made with usage information
    */
     async generateTextWithTools(
       prompt: string,
       tools: Record<string, any>,
       options?: Record<string, any>
-    ): Promise<{ text: string; toolCalls: any[] }> {
+    ): Promise<{ text: string; toolCalls: any[]; usage?: any; finishReason?: any; duration: number }> {
       try {
         // Get the model name and determine the appropriate provider
         const modelName = options?.model || this.defaultModel;
@@ -86,20 +101,9 @@ export class AiService implements IAiService {
         const startTime = Date.now();
         const modelProvider = getModelProvider(modelName, modelApiKey);
   
-        // Normalize tool schemas: enforce type:"object" if missing
-        const toolSet: Record<string, any> = {};
-        for (const [name, tool] of Object.entries(tools || {})) {
-          toolSet[name] = {
-            description: (tool as any).description || `Tool: ${name}`,
-            // Use the stored JSON schema parameters
-            parameters: (tool as any).parameters || {
-              type: "object",
-              properties: {}
-            },
-            execute: (tool as any).execute,
-          };
-        }
-  
+        // Use tools directly - they should already be in the correct format
+        const toolSet = tools || {};
+
         this.logger.log(`[AI-SERVICE] Using tools: ${JSON.stringify(Object.keys(toolSet))}`);
   
         const { model: _omitModel2, openaiApiKey: _omitKey2, ...safeOptions2 } = options || {};
@@ -118,10 +122,18 @@ export class AiService implements IAiService {
           const toolNames = (result.toolCalls as any[]).map(tc => tc?.name ?? 'unknown');
           this.logger.log(`[AI-SERVICE] Tool calls requested: ${toolNames.join(', ')}`);
         }
+
+        // Log token usage if available
+        if (result.usage) {
+          this.logger.log(`[AI-SERVICE] Token usage - Input: ${result.usage.inputTokens}, Output: ${result.usage.outputTokens}, Total: ${result.usage.totalTokens}`);
+        }
   
         return {
           text: result.text,
           toolCalls: result.toolCalls || [],
+          usage: result.usage,
+          finishReason: result.finishReason,
+          duration: duration
         };
       } catch (error) {
         this.logger.error(`[AI-SERVICE] Failed to generate text with tools: ${error.message}`, error.stack);

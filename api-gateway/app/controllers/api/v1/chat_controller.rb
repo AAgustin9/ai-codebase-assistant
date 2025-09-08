@@ -27,6 +27,9 @@ module Api
             response_data: response
           )
           
+          # Create analytics record if usage data is available
+          create_chat_analytics(api_request, response) if response['usage']
+          
           Rails.logger.info "[API-GATEWAY] Request completed successfully in #{Time.current - api_request.started_at} seconds"
           render json: response, status: :ok
         rescue => e
@@ -47,13 +50,30 @@ module Api
       private
       
       def chat_params
-        params.permit(:prompt, :model, tools: [], options: {})
+        # Handle both direct parameters and nested chat parameters
+        if params[:chat].present?
+          params.require(:chat).permit(:prompt, :model, tools: [], options: {})
+        else
+          params.permit(:prompt, :model, tools: [], options: {})
+        end
       end
       
       def create_api_request
+        # Map model names to enum values
+        model_provider = case chat_params[:model]&.downcase
+        when /gpt/
+          'gpt'
+        when /claude/
+          'claude'
+        when /gemini/
+          'gemini'
+        else
+          'gpt' # default
+        end
+        
         @current_api_key.api_requests.create!(
           prompt: chat_params[:prompt],
-          model_provider: chat_params[:model] || 'gpt',
+          model_provider: model_provider,
           ip_address: request.remote_ip,
           user_agent: request.user_agent,
           status: :pending
@@ -61,6 +81,10 @@ module Api
       end
       
       def forward_to_ai_engine(params)
+        require 'net/http'
+        require 'uri'
+        require 'json'
+        
         ai_engine_base = ENV.fetch('AI_ENGINE_URL', 'http://localhost:3001/api/v1')
         use_tools = ActiveModel::Type::Boolean.new.cast(params.dig(:options, :use_tools))
         endpoint  = use_tools ? '/ai/generate-with-tools' : '/ai/generate'
@@ -68,15 +92,18 @@ module Api
       
         Rails.logger.info "[API-GATEWAY] -> AI: #{full_url}"
       
-        req_headers = {
-          'Content-Type'   => 'application/json',
-          'Accept'         => 'application/json',
-          # Trazabilidad:
-          'X-Request-Id'   => request.request_id,
-          'X-Forwarded-For'=> request.remote_ip,
-          # Token interno opcional si protegés el AI-Engine a nivel red:
-          'X-Internal-Token' => ENV['AI_ENGINE_INTERNAL_TOKEN']
-        }.compact
+        uri = URI(full_url)
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.read_timeout = 25
+        http.open_timeout = 5
+        http.write_timeout = 10
+      
+        request = Net::HTTP::Post.new(uri)
+        request['Content-Type'] = 'application/json'
+        request['Accept'] = 'application/json'
+        request['X-Request-Id'] = request.request_id if request.respond_to?(:request_id)
+        request['X-Forwarded-For'] = request.remote_ip if request.respond_to?(:remote_ip)
+        request['X-Internal-Token'] = ENV['AI_ENGINE_INTERNAL_TOKEN'] if ENV['AI_ENGINE_INTERNAL_TOKEN']
       
         payload = {
           prompt:  params[:prompt],
@@ -86,30 +113,58 @@ module Api
           }
         }
       
-        # timeouts razonables (http.rb)
-        http_client = HTTP.timeout(connect: 5, write: 10, read: 25)
-                          .headers(req_headers)
+        request.body = payload.to_json
       
         begin
           started = Time.current
-          response = http_client.post(full_url, json: payload)
+          response = http.request(request)
           dur = Time.current - started
       
-          Rails.logger.info "[API-GATEWAY] <- AI status=#{response.status} in #{dur.round(2)}s"
+          Rails.logger.info "[API-GATEWAY] <- AI status=#{response.code} in #{dur.round(2)}s"
       
-          # Si no es 2xx, levanta con el cuerpo (útil para debug)
-          unless response.status.success?
-            body = response.to_s
-            raise "AI Engine error (#{response.status}): #{body.first(500)}"
+          if response.code.to_i.between?(200, 299)
+            JSON.parse(response.body)
+          else
+            Rails.logger.error "[API-GATEWAY] AI Engine error: #{response.code} - #{response.body}"
+            raise "AI Engine returned error: #{response.code} - #{response.body}"
           end
-      
-          JSON.parse(response.to_s)
         rescue => e
           Rails.logger.error "[API-GATEWAY] forward_to_ai_engine failed: #{e.message}"
           raise
         end
       end
       
+      def create_chat_analytics(api_request, response)
+        usage = response['usage']
+        return unless usage
+        
+        # Extract tools used from response
+        tools_used = []
+        if response['toolResults']&.any?
+          tools_used = response['toolResults'].map { |tool| tool['name'] }.compact.uniq
+        end
+        
+        # Get model name from request or response
+        model_name = chat_params[:model] || response.dig('meta', 'model') || 'unknown'
+        
+        # Calculate response time
+        response_time_ms = api_request.duration_ms || 0
+        
+        api_request.create_chat_analytics!(
+          prompt_tokens: usage['inputTokens'] || 0,
+          completion_tokens: usage['outputTokens'] || 0,
+          total_tokens: usage['totalTokens'] || 0,
+          model: model_name,
+          response_time_ms: response_time_ms,
+          tools_used: tools_used,
+          error_message: nil
+        )
+        
+        Rails.logger.info "[API-GATEWAY] Created analytics record - Model: #{model_name}, Tokens: #{usage['totalTokens']}, Tools: #{tools_used.join(', ')}"
+      rescue => e
+        Rails.logger.error "[API-GATEWAY] Failed to create analytics record: #{e.message}"
+        # Don't fail the request if analytics creation fails
+      end
       
       def authenticate_api_key!
         header_key = request.headers['X-API-Key']

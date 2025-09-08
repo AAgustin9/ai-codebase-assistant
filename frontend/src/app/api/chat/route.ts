@@ -3,13 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   console.log('[FRONTEND] Received chat request');
   try {
-    const { prompt, model, modelApiKey } = await req.json();
-    
+    const { prompt, model } = await req.json();
+    const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:3003/api/v1';
+
+
     console.log(`[FRONTEND] Request details: model=${model}, prompt length=${prompt?.length || 0}`);
-    
-    // Extract the API key from the request headers (optional)
-    const apiKey = req.headers.get('X-API-Key');
-    
+        
     if (!prompt) {
       console.log('[FRONTEND] Error: Prompt is missing');
       return NextResponse.json(
@@ -22,27 +21,27 @@ export async function POST(req: NextRequest) {
     const payload = {
       prompt: prompt,
       model: model || 'gpt-4o',
-      modelApiKey: modelApiKey, // Forward the model API key
       options: {
-        temperature: 0.7
+        temperature: 0.7,
+        use_tools: false
       }
     };
     
-    // Check if this is a GitHub operation that needs tools
-    const isGitHubOperation = prompt.toLowerCase().includes('github') && 
-      (prompt.toLowerCase().includes('list files') || 
-       prompt.toLowerCase().includes('read file') || 
-       prompt.toLowerCase().includes('create issue') ||
-       prompt.toLowerCase().includes('write file'));
+    // Check if this is a GitHub operation or any tool request
+    const lower = prompt.toLowerCase();
+    const isGitHubOperation = (lower.includes('github') && 
+      (lower.includes('list files') || lower.includes('read file') || lower.includes('create issue') || lower.includes('write file'))) 
+      || lower.includes('tool');
     
-    // Determine backend target
-    const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL;
-    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:3001/api/v1';
-    const useGateway = !!apiGatewayUrl;
+    // Set use_tools flag for GitHub operations
+    if (isGitHubOperation) {
+      payload.options.use_tools = true;
+    }
     
     // Use tools endpoint for GitHub operations, regular endpoint otherwise
     const endpoint = isGitHubOperation ? 'ai/generate-with-tools' : 'ai/generate';
     const target = useGateway ? `${apiGatewayUrl}/api/v1/chat` : `${aiEngineUrl}/${endpoint}`;
+    const gatewayEndpoint = `${apiGatewayUrl}/api/v1/chat`
     
     console.log(`[FRONTEND] GitHub operation detected: ${isGitHubOperation}`);
     console.log(`[FRONTEND] Forwarding request to: ${target}`);
@@ -59,7 +58,10 @@ export async function POST(req: NextRequest) {
           ? payload
           : {
               prompt,
-              options: { model: payload.model, temperature: payload.options.temperature },
+              options: { 
+                model: payload.model, 
+                temperature: payload.options.temperature,
+              },
             }
       ),
     });

@@ -37,11 +37,12 @@ export class AiController {
   @Post('generate')
   async generateText(@Body() dto: GenerateTextDto) {
     try {
-      const start = Date.now();
       const result = await this.aiService.generateText(dto.prompt, dto.options);
       return {
-        result,
-        meta: { durationMs: Date.now() - start },
+        result: result.text,
+        usage: result.usage,
+        finishReason: result.finishReason,
+        meta: { durationMs: result.duration },
       };
     } catch (error: any) {
       this.logger.error(`generateText failed: ${error.message}`, error.stack);
@@ -55,13 +56,14 @@ export class AiController {
   @Post('generate-with-tools')
   async generateTextWithTools(@Body() dto: GenerateTextWithToolsDto) {
     try {
-      const start = Date.now();
-      // Si usás herramientas tipo “githubTools”, inyectalas desde tu AiService
+      // Si usás herramientas tipo "githubTools", inyectalas desde tu AiService
       const result = await this.aiService.generateTextWithTools(dto.prompt, githubTools, dto.options);
       return {
         text: result.text,
         toolResults: result.toolCalls ?? [],
-        meta: { durationMs: Date.now() - start },
+        usage: result.usage,
+        finishReason: result.finishReason,
+        meta: { durationMs: result.duration },
       };
     } catch (error: any) {
       this.logger.error(`generateTextWithTools failed: ${error.message}`, error.stack);

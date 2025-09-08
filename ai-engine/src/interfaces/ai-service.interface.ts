@@ -6,16 +6,21 @@ export interface IAiService {
    * Generates text using the specified LLM
    * @param prompt The prompt to send to the LLM
    * @param options Optional configuration for the LLM
-   * @returns The generated text response
+   * @returns The generated text response with usage information
    */
-  generateText(prompt: string, options?: Record<string, any>): Promise<string>;
+  generateText(prompt: string, options?: Record<string, any>): Promise<{
+    text: string;
+    usage?: any;
+    finishReason?: any;
+    duration: number;
+  }>;
 
   /**
    * Generates text with tool usage capabilities
    * @param prompt The prompt to send to the LLM
    * @param tools Array of tools available to the LLM
    * @param options Optional configuration for the LLM
-   * @returns The generated text response and any tool calls made
+   * @returns The generated text response and any tool calls made with usage information
    */
   generateTextWithTools(
     prompt: string,
@@ -24,5 +29,8 @@ export interface IAiService {
   ): Promise<{
     text: string;
     toolCalls: any[];
+    usage?: any;
+    finishReason?: any;
+    duration: number;
   }>;
 }
